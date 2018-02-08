@@ -1,5 +1,15 @@
+#!/usr/bin/env python3
+
 import os
 import select
+from time import sleep
+
+def kernelPinsToPorts(reg):
+	return chr(ord('A') + (reg // 32)) + str(reg % 32)
+
+def portsToKernelPins(port):
+	return 32 * (ord(port[0]) - ord('A')) + int(port[1:])
+
 
 class GPIOError(IOError):
     """Base class for GPIO errors."""
@@ -31,6 +41,7 @@ class GPIO(object):
         """
         self._fd = None
         self._pin = None
+        self._portPin = None
         self._open(pin, direction)
 
     def __del__(self):
@@ -44,13 +55,17 @@ class GPIO(object):
 
     def _open(self, pin, direction):
         if not isinstance(pin, int):
-            raise TypeError("Invalid pin type, should be integer.")
+            if not isinstance(pin, str):
+                raise TypeError("Invalid pin type, should be integer or string.")
+            portPin = pin
+            pin = portsToKernelPins(pin)
+        portPin = kernelPinsToPorts(pin)
         if not isinstance(direction, str):
             raise TypeError("Invalid direction type, should be string.")
         if direction.lower() not in ["in", "out", "high", "low", "preserve"]:
             raise ValueError("Invalid direction, can be: \"in\", \"out\", \"high\", \"low\", \"preserve\".")
 
-        gpio_path = "/sys/class/gpio/gpio%d" % pin
+        gpio_path = "/sys/class/gpio/pio%s" % portPin
 
         if not os.path.isdir(gpio_path):
             # Export the pin
@@ -64,18 +79,19 @@ class GPIO(object):
         direction = direction.lower()
         if direction != "preserve":
             try:
-                with open("/sys/class/gpio/gpio%d/direction" % pin, "w") as f_direction:
+                with open("/sys/class/gpio/pio%s/direction" % portPin, "w") as f_direction:
                     f_direction.write(direction + "\n")
             except IOError as e:
                 raise GPIOError(e.errno, "Setting GPIO direction: " + e.strerror)
 
         # Open value
         try:
-            self._fd = os.open("/sys/class/gpio/gpio%d/value" % pin, os.O_RDWR)
+            self._fd = os.open("/sys/class/gpio/pio%s/value" % portPin, os.O_RDWR)
         except OSError as e:
             raise GPIOError(e.errno, "Opening GPIO: " + e.strerror)
 
         self._pin = pin
+        self._portPin = portPin
 
 
     # Methods
@@ -216,20 +232,28 @@ class GPIO(object):
         return self._pin
 
     @property
+    def portPin(self):
+        """Get the port and pin number.
+        
+        :type: string
+        """
+        return self._portPin
+
+    @property
     def supports_interrupts(self):
         """Get whether or not this GPIO supports edge interrupts, configurable
         with the .edge property.
 
         :type: bool
         """
-        return os.path.isfile("/sys/class/gpio/gpio%d/edge" % self._pin)
+        return os.path.isfile("/sys/class/gpio/pio%s/edge" % self._portPin)
 
     # Mutable properties
 
     def _get_direction(self):
         # Read direction
         try:
-            with open("/sys/class/gpio/gpio%d/direction" % self._pin, "r") as f_direction:
+            with open("/sys/class/gpio/pio%s/direction" % self._portPin, "r") as f_direction:
                 direction = f_direction.read()
         except IOError as e:
             raise GPIOError(e.errno, "Getting GPIO direction: " + e.strerror)
@@ -245,7 +269,7 @@ class GPIO(object):
         # Write direction
         try:
             direction = direction.lower()
-            with open("/sys/class/gpio/gpio%d/direction" % self._pin, "w") as f_direction:
+            with open("/sys/class/gpio/pio%s/direction" % self._portPin, "w") as f_direction:
                 f_direction.write(direction + "\n")
         except IOError as e:
             raise GPIOError(e.errno, "Setting GPIO direction: " + e.strerror)
@@ -267,7 +291,7 @@ class GPIO(object):
     def _get_edge(self):
         # Read edge
         try:
-            with open("/sys/class/gpio/gpio%d/edge" % self._pin, "r") as f_edge:
+            with open("/sys/class/gpio/pio%s/edge" % self._portPin, "r") as f_edge:
                 edge = f_edge.read()
         except IOError as e:
             raise GPIOError(e.errno, "Getting GPIO edge: " + e.strerror)
@@ -283,7 +307,7 @@ class GPIO(object):
         # Write edge
         try:
             edge = edge.lower()
-            with open("/sys/class/gpio/gpio%d/edge" % self._pin, "w") as f_edge:
+            with open("/sys/class/gpio/pio%s/edge" % self._portPin, "w") as f_edge:
                 f_edge.write(edge + "\n")
         except IOError as e:
             raise GPIOError(e.errno, "Setting GPIO edge: " + e.strerror)
@@ -306,4 +330,12 @@ class GPIO(object):
             return "GPIO %d (fd=%d, direction=%s, supports interrupts, edge=%s)" % (self._pin, self._fd, self.direction, self.edge)
 
         return "GPIO %d (fd=%d, direction=%s, no interrupts)" % (self._pin, self._fd, self.direction)
+
+if __name__ == '__main__':
+    testPin = GPIO('C26', direction="out")
+    while(1):
+        testPin.write(True)
+        sleep(1)
+        testPin.write(False)
+        sleep(1)
 
