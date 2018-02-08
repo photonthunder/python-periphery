@@ -26,7 +26,7 @@ class GPIO(object):
         Default is "preserve".
 
         Args:
-            pin (int): Linux pin number.
+            pin (int): Linux pin number or port/pin string (i.e. C26)
             direction (str): pin direction, can be "in", "out", "high", "low",
                              or "preserve".
 
