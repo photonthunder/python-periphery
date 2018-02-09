@@ -1,7 +1,10 @@
+#!/usr/bin/env python3
+
 import os
 import fcntl
 import array
 import ctypes
+from time import sleep
 
 class SPIError(IOError):
     """Base class for SPI errors."""
@@ -415,3 +418,12 @@ class SPI(object):
     def __str__(self):
         return "SPI (device=%s, fd=%d, mode=%s, max_speed=%d, bit_order=%s, bits_per_word=%d, extra_flags=0x%02x)" % (self.devpath, self.fd, self.mode, self.max_speed, self.bit_order, self.bits_per_word, self.extra_flags)
 
+if __name__ == '__main__':
+    spi1 = SPI("/dev/spidev32766.0", 0, 5000000)
+    while(1):
+        dataOut = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]
+        dataIn = spi1.transfer(dataOut)
+        print(*('0x{:02X}'.format(n) for n in dataOut))
+        print(*('0x{:02X}'.format(n) for n in dataIn))
+        sleep(1)
+    spi1.close()
